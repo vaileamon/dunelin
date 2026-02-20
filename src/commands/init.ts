@@ -1,10 +1,16 @@
 import * as p from "@clack/prompts";
 import { resolve, basename, join } from "path";
-import { writeFile, rename, readdir } from "fs/promises";
+import { writeFile, rename, readdir, mkdir } from "fs/promises";
 import { existsSync } from "fs";
-import { cloneTemplate, cloneProjectRepos } from "../lib/git.ts";
+import { cloneShadow, cloneProjectRepos } from "../lib/git.ts";
 import { writeEmbeddedTemplate, type TemplateVars } from "../lib/render.ts";
-import { listProjectsWithRepos } from "../lib/workspace.ts";
+import {
+  listProjectsWithRepos,
+  copyFromShadow,
+  CONFIG_FILE,
+  DUNELIN_DIR,
+  LEGACY_CONFIG_FILE,
+} from "../lib/workspace.ts";
 import { BASE_TEMPLATE } from "../templates/embedded.ts";
 
 export async function runInit(args: string[]): Promise<void> {
@@ -14,7 +20,10 @@ export async function runInit(args: string[]): Promise<void> {
   p.intro("Welcome to Dunelin.");
 
   // Warn if target is already a dunelin workspace
-  if (existsSync(join(targetDir, "dunelin.json"))) {
+  if (
+    existsSync(join(targetDir, CONFIG_FILE)) ||
+    existsSync(join(targetDir, LEGACY_CONFIG_FILE))
+  ) {
     const overwrite = await p.confirm({
       message: "This directory is already a Dunelin workspace. Reinitialize?",
       initialValue: false,
@@ -85,11 +94,15 @@ async function initFromGit(targetDir: string, targetName: string | undefined): P
     process.exit(0);
   }
 
+  // Ensure target directory exists
+  await mkdir(targetDir, { recursive: true });
+
   const s = p.spinner();
   s.start(targetName ? `Cloning template into ${targetName}...` : "Cloning template...");
 
+  let shadowPath: string;
   try {
-    await cloneTemplate(templateUrl, targetDir);
+    shadowPath = await cloneShadow(templateUrl, targetDir);
   } catch (err) {
     s.stop("Failed to clone template.");
     p.log.error(
@@ -100,16 +113,24 @@ async function initFromGit(targetDir: string, targetName: string | undefined): P
 
   s.stop("Template cloned.");
 
-  // Update dunelin.json with template source (only if template includes one)
-  const hasConfig = existsSync(join(targetDir, "dunelin.json"));
-  if (hasConfig) {
-    await updateWorkspaceConfig(targetDir, {
-      template: "custom",
-      templateUrl,
-    });
-  } else {
-    p.log.warn("No dunelin.json found in template — skipping workspace config.");
-  }
+  // Copy files from shadow to workspace root
+  const s2 = p.spinner();
+  s2.start("Setting up workspace...");
+
+  const { copied } = await copyFromShadow(shadowPath, targetDir);
+  s2.stop(`Copied ${copied.length} files from template.`);
+
+  // Write config
+  const now = new Date().toISOString();
+  await writeWorkspaceConfig(targetDir, {
+    version: "0.2.0",
+    shadow: true,
+    template: "custom",
+    templateUrl,
+    updateIgnore: ["**/repos"],
+    createdAt: now,
+    updatedAt: now,
+  });
 
   // Smart repo detection
   await offerRepoCloning(targetDir);
@@ -219,11 +240,14 @@ async function initFromBuiltin(
     await renameContextFiles(targetDir, finalContextFile);
   }
 
-  // Update dunelin.json with actual values
+  // Write config to .dunelin/config.json
   const now = new Date().toISOString();
-  await updateWorkspaceConfig(targetDir, {
+  await writeWorkspaceConfig(targetDir, {
+    version: "0.2.0",
     contextFile: finalContextFile,
     template: "base",
+    shadow: false,
+    updateIgnore: ["**/repos"],
     createdAt: now,
     updatedAt: now,
   });
@@ -243,32 +267,14 @@ function resolveTargetDir(targetName: string | undefined): string {
   return process.cwd();
 }
 
-async function updateWorkspaceConfig(
+async function writeWorkspaceConfig(
   workspacePath: string,
-  updates: Record<string, unknown>
+  config: Record<string, unknown>
 ): Promise<void> {
-  const configPath = join(workspacePath, "dunelin.json");
-  let config: Record<string, unknown> = {};
+  const dunelinDir = join(workspacePath, DUNELIN_DIR);
+  await mkdir(dunelinDir, { recursive: true });
 
-  try {
-    const raw = await Bun.file(configPath).text();
-    config = JSON.parse(raw);
-  } catch {
-    // Start fresh
-  }
-
-  const now = new Date().toISOString();
-  config = {
-    ...config,
-    ...updates,
-    updatedAt: now,
-  };
-
-  // Ensure createdAt is set
-  if (!config.createdAt) {
-    config.createdAt = now;
-  }
-
+  const configPath = join(workspacePath, CONFIG_FILE);
   await writeFile(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
 }
 

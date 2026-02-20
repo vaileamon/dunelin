@@ -1,12 +1,24 @@
-# 💎 Dunelin
+# Dunelin
 
 > **Beta** — Dunelin is under active development. Expect breaking changes.
 
-Scaffold and manage agentic workspaces.
+Your AI tools start every session cold. No memory of your architecture, team, terms, or decisions. You repeat yourself endlessly.
 
-AI coding tools start every session cold — no knowledge of your codebase, team, terms, or architecture. Dunelin creates an opinionated workspace structure with context files that AI tools read natively, plus an MCP server for programmatic access.
+Dunelin fixes this. It scaffolds an opinionated workspace with **context files** that AI tools read natively. Your AI agent knows everything from the first prompt.
+
+For teams, Dunelin goes further: a **shadow repo** versions and syncs context via git. Your team's knowledge stays current across every session, every machine, every tool.
 
 Works with Claude Code, Cursor, Windsurf, and any tool that reads context files.
+
+---
+
+## Quick Start
+
+```bash
+dunelin init my-workspace
+```
+
+The interactive setup asks you to choose between a **built-in template** or a **custom git template**, then scaffolds the workspace. Open it in your editor — your AI tool reads the context automatically.
 
 ---
 
@@ -50,18 +62,52 @@ xattr -d com.apple.quarantine ~/.local/bin/dunelin
 
 ---
 
-## Quick Start
+## How It Works
 
-```bash
-# Create a new workspace in a subfolder
-dunelin init my-workspace
+### Context Files
 
-# Or initialize the current directory as a workspace
-mkdir my-workspace && cd my-workspace
-dunelin init
+Dunelin generates structured markdown files that AI tools pick up automatically:
+
+```
+my-workspace/
+├── CLAUDE.md               ← workspace-wide context (you, your projects, terms)
+├── .mcp.json                ← MCP server config (auto-discovered by AI tools)
+├── .dunelin/
+│   └── config.json          ← workspace configuration
+└── projects/
+    └── my-project/
+        ├── CLAUDE.md        ← project context (architecture, stack, concepts)
+        ├── HUMANS.md        ← team members on this project
+        ├── dunelin.json     ← project metadata (repos, status, tags)
+        ├── changelog/       ← decision log, session summaries
+        └── repos/           ← cloned code repositories
 ```
 
-The interactive setup will ask you to choose between a **built-in template** or a **custom git template**, then scaffold the workspace.
+Your AI tool reads these files at session start. No more explaining your codebase every time.
+
+### Shadow Repo
+
+When you create a workspace from a **git template**, Dunelin keeps the full clone inside `.dunelin/shadow/` — with `.git/` intact. This is the canonical, version-controlled copy of your context.
+
+```
+.dunelin/
+├── config.json
+└── shadow/                  ← git clone of your template
+    ├── .git/                ← full git history
+    ├── CLAUDE.md            ← AI edits here, commits, pushes
+    └── projects/
+        └── ...
+```
+
+**The workflow:**
+1. AI edits context files in `.dunelin/shadow/`
+2. AI commits and pushes
+3. Run `dunelin update` to sync changes to workspace root
+4. Your team pulls the same context on their machines
+
+This gives you **versioned, collaborative context** without making the workspace itself a git repo. Code repos under `projects/*/repos/` are untouched.
+
+No shadow? No problem. Workspaces from built-in templates work without git — just edit files directly.
 
 ---
 
@@ -72,6 +118,7 @@ dunelin — scaffold and manage agentic workspaces
 
 Usage:
   dunelin init [name]    Set up a new workspace (interactive)
+  dunelin update         Pull latest context from shadow repo
   dunelin mcp            Start the MCP server (stdio)
   dunelin --help         Show this help
 ```
@@ -85,77 +132,65 @@ Interactive workspace setup. Two forms:
 | `dunelin init my-workspace` | Creates a `my-workspace/` folder and scaffolds inside it |
 | `dunelin init` | Scaffolds in the current directory (uses folder name as workspace name) |
 
-The command offers two setup paths:
+Two setup paths:
 
-**Built-in template** — Pick a template shipped with Dunelin, fill in your name and role, choose your AI tool. Dunelin scaffolds the workspace and configures the correct context file format.
+**Built-in template** — Pick a template, fill in your name and role, choose your AI tool. Dunelin scaffolds the workspace with the correct context file format.
 
-**Custom git template** — Provide a git URL to your own workspace template. Dunelin clones it, detects any project repos defined in `dunelin.json` metadata, and offers to clone them.
+**Git template** — Provide a git URL. Dunelin clones it as a shadow repo, copies files to workspace root, and offers to clone any code repos defined in project metadata.
+
+### `dunelin update`
+
+Pulls the latest context from the shadow repo and syncs to workspace root.
+
+```
+$ dunelin update
+
+Pulling latest context...
+  ✓ Pulled latest changes.
+
+Found 2 changes:
+  ~ CLAUDE.md (modified)
+  + projects/newproject/CLAUDE.md (added)
+
+? Apply changes?
+  > Apply all
+  > Let me pick
+  > Skip
+```
+
+Only available for workspaces created from a git template. Respects `updateIgnore` patterns in config (defaults to `**/repos`).
 
 ### `dunelin mcp`
 
-Starts the MCP server over stdio. Not called directly — your AI tool invokes it automatically through the `.mcp.json` config file that Dunelin generates in your workspace root.
+Starts the MCP server over stdio. Not called directly — your AI tool invokes it automatically through `.mcp.json`.
 
 **Tools exposed:**
 
 | Tool | Input | Returns |
 |------|-------|---------|
-| `dunelin_get_workspace` | — | Root context file content + list of all projects (name, description, status) |
-| `dunelin_get_project` | `{ project: string }` | Project context file + HUMANS.md + dunelin.json metadata |
-| `dunelin_list_projects` | — | All projects with name, description, status, and repos |
-
-The MCP server reads from `DUNELIN_WORKSPACE` env var (set in `.mcp.json`) or falls back to `cwd`.
-
----
-
-## Workspace Structure
-
-A Dunelin workspace looks like this:
-
-```
-my-workspace/
-├── CLAUDE.md               ← root context file (workspace-wide)
-├── .mcp.json                ← MCP server config (auto-discovered by AI tools)
-├── dunelin.json             ← workspace metadata
-└── projects/
-    └── my-project/
-        ├── CLAUDE.md        ← project-specific context
-        ├── HUMANS.md        ← team members on this project
-        ├── dunelin.json     ← project metadata (repos, status, tags)
-        ├── changelog/       ← decision log, session summaries
-        └── repos/           ← cloned code repositories
-            ├── api/
-            └── web/
-```
-
-**Context files** are the core concept — structured markdown files that AI tools read automatically at session start. They contain your architecture, tech stack, team, terms, and conventions. No more repeating yourself every session.
-
-**The context filename is configurable:** `CLAUDE.md` (Claude Code), `.cursorrules` (Cursor), or any custom filename. Chosen during `dunelin init` and stored in the root `dunelin.json`.
+| `dunelin_get_workspace` | — | Root context file + project list |
+| `dunelin_get_project` | `{ project: string }` | Project context + team + metadata |
+| `dunelin_list_projects` | — | All projects with name, description, status, repos |
 
 ---
 
 ## Templates
 
-Templates define the workspace structure: which files exist, where they go, what content they have.
-
 ### Built-in: Base
 
-The **Base** template ships with Dunelin. It's generic — usable by any team or individual. It scaffolds:
+The **Base** template ships with Dunelin. Generic — usable by anyone:
 
 ```
-CLAUDE.md                          ← root context (your name, role, project table, terms, tools)
-.mcp.json                          ← MCP server auto-config
-dunelin.json                       ← workspace metadata
+CLAUDE.md                          ← workspace context
+.mcp.json                          ← MCP auto-config
+.dunelin/config.json               ← workspace metadata
 projects/
-  example/                         ← example project (shows the structure)
-    CLAUDE.md                      ← project context (architecture, tech stack, key concepts)
-    HUMANS.md                      ← project team (members, roles, working preferences)
-    dunelin.json                   ← project metadata
-    changelog/                     ← decision log
+  example/                         ← example project (replace with your own)
+    CLAUDE.md
+    HUMANS.md
+    dunelin.json
+    changelog/
 ```
-
-Placeholders like `{Workspace Name}`, `{Name}`, and `{Role}` are filled in during setup.
-
-The `projects/example/` folder demonstrates the structure — replace it with your own projects.
 
 ### Custom Git Templates
 
@@ -167,74 +202,49 @@ dunelin init my-workspace
 # → paste: git@github.com:company/workspace-template.git
 ```
 
-Dunelin clones the repo, strips `.git`, and scans all `dunelin.json` files for a `repos` property. If found, it offers to clone those repos into each project's `repos/` directory.
+Dunelin clones the repo as a shadow, copies files to workspace root, and scans all `dunelin.json` files for a `repos` property. If found, it offers to clone those repos.
 
-This is how teams maintain their own opinionated workspace structures — specific projects, pre-configured context files, repo references — while using Dunelin as the scaffolding engine.
+This is how teams maintain their own opinionated workspace structures — specific projects, pre-configured context, repo references — while using Dunelin as the scaffolding engine.
 
 ---
 
 ## Configuration
 
-### Root `dunelin.json`
+### `.dunelin/config.json`
 
 ```json
 {
-  "version": "1.0.0",
+  "version": "0.2.0",
   "contextFile": "CLAUDE.md",
   "template": "base",
   "templateUrl": null,
-  "createdAt": "2026-02-17T00:00:00.000Z",
-  "updatedAt": "2026-02-17T00:00:00.000Z"
+  "shadow": false,
+  "updateIgnore": ["**/repos"],
+  "createdAt": "2026-02-18T00:00:00Z",
+  "updatedAt": "2026-02-18T00:00:00Z"
 }
 ```
 
 | Field | Description |
 |-------|-------------|
-| `version` | Config schema version |
 | `contextFile` | Name of the context file (`CLAUDE.md`, `.cursorrules`, or custom) |
 | `template` | Template used (`base`, `custom`) |
 | `templateUrl` | Git URL if a custom template was used |
-| `createdAt` | Workspace creation timestamp |
-| `updatedAt` | Last modification timestamp |
+| `shadow` | Whether a shadow repo exists |
+| `updateIgnore` | Glob patterns for paths `dunelin update` should skip |
 
 ### Project `dunelin.json`
 
 ```json
 {
   "name": "my-project",
-  "description": "Financial data platform for accountants",
+  "description": "Financial data platform",
   "status": "active",
   "repos": [
     { "name": "api", "url": "git@github.com:company/api.git" },
     { "name": "web", "url": "git@github.com:company/web.git" }
   ],
   "tags": ["consultancy"]
-}
-```
-
-| Field | Description |
-|-------|-------------|
-| `name` | Project name (matches folder name) |
-| `description` | Short project description |
-| `status` | Current status (e.g., `active`, `archived`, `idea`) |
-| `repos` | Code repositories — Dunelin clones these into `repos/` |
-| `tags` | Freeform tags for organization |
-
-### `.mcp.json`
-
-Generated automatically. Tells AI tools how to invoke the Dunelin MCP server:
-
-```json
-{
-  "mcpServers": {
-    "dunelin": {
-      "command": "dunelin",
-      "args": ["mcp"],
-      "env": {
-        "DUNELIN_WORKSPACE": "."
-      }
-    }
-  }
 }
 ```
 
@@ -247,6 +257,7 @@ Requires [Bun](https://bun.sh).
 ```bash
 bun install
 bun run dev -- init my-test          # run dunelin init
+bun run dev -- update                # run dunelin update
 bun run dev -- mcp                   # run MCP server
 bun run build                        # compile to native binary
 bun run typecheck                    # type-check without emitting

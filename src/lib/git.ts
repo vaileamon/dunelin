@@ -2,6 +2,7 @@ import simpleGit from "simple-git";
 import { mkdir, rm } from "fs/promises";
 import { join } from "path";
 import type { RepoConfig } from "./schemas.ts";
+import { SHADOW_DIR } from "./workspace.ts";
 
 /**
  * Clone a git repository to a target directory.
@@ -16,7 +17,7 @@ export async function cloneRepo(
 
 /**
  * Clone a template repository, then remove its .git directory.
- * The workspace itself should not be a git repo.
+ * @deprecated Use cloneShadow() instead for 0.2.0+
  */
 export async function cloneTemplate(
   templateUrl: string,
@@ -24,6 +25,20 @@ export async function cloneTemplate(
 ): Promise<void> {
   await cloneRepo(templateUrl, targetDir);
   await rm(join(targetDir, ".git"), { recursive: true, force: true });
+}
+
+/**
+ * Clone a template into .dunelin/shadow/, keeping .git intact.
+ * Returns the shadow directory path.
+ */
+export async function cloneShadow(
+  templateUrl: string,
+  workspacePath: string
+): Promise<string> {
+  const shadowPath = join(workspacePath, SHADOW_DIR);
+  await mkdir(join(workspacePath, ".dunelin"), { recursive: true });
+  await cloneRepo(templateUrl, shadowPath);
+  return shadowPath;
 }
 
 /**

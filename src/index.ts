@@ -9,6 +9,11 @@ switch (command) {
     await runInit(args.slice(1));
     break;
   }
+  case "update": {
+    const { runUpdate } = await import("./commands/update.ts");
+    await runUpdate();
+    break;
+  }
   case "mcp": {
     const { runMcp } = await import("./mcp/server.ts");
     await runMcp();
@@ -22,6 +27,7 @@ dunelin — scaffold and manage agentic workspaces
 
 Usage:
   dunelin init [name]    Set up a new workspace (interactive)
+  dunelin update         Pull latest context from shadow repo
   dunelin mcp            Start the MCP server (stdio)
   dunelin --help         Show this help
 

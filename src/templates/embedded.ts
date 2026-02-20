@@ -40,26 +40,28 @@ Available MCP tools:
 - \`dunelin_get_project\` — project context, team, metadata
 - \`dunelin_list_projects\` — all projects overview
 
+## Context Persistence
+This workspace may use a shadow repo (\`.dunelin/shadow/\`) to version and share context.
+
+When updating context files (CLAUDE.md, HUMANS.md, changelog entries):
+1. Edit the file inside \`.dunelin/shadow/\` (the canonical copy)
+2. Commit: \`cd .dunelin/shadow && git add -A && git commit -m "update context"\`
+3. Push: \`git push\`
+4. Run \`dunelin update\` to sync changes to workspace root
+
+If \`.dunelin/shadow/\` does not exist, edit workspace root files directly.
+Never modify \`.dunelin/config.json\` — managed by the dunelin CLI.
+
 ## Workspace Structure
 \`\`\`
-projects/{name}/CLAUDE.md     — project context
-projects/{name}/HUMANS.md     — project team
-projects/{name}/dunelin.json  — project metadata (repos, status, tags)
-projects/{name}/changelog/    — decision log
-projects/{name}/repos/        — code repositories (cloned or linked)
+.dunelin/config.json              — workspace config (managed by dunelin)
+.dunelin/shadow/                  — shadow repo (if created from git template)
+projects/{name}/CLAUDE.md         — project context
+projects/{name}/HUMANS.md         — project team
+projects/{name}/dunelin.json      — project metadata (repos, status, tags)
+projects/{name}/changelog/        — decision log
+projects/{name}/repos/            — code repositories (cloned or linked)
 \`\`\`
-`,
-  },
-  {
-    path: "dunelin.json",
-    content: `{
-  "version": "1.0.0",
-  "contextFile": "CLAUDE.md",
-  "template": "base",
-  "templateUrl": null,
-  "createdAt": "",
-  "updatedAt": ""
-}
 `,
   },
   {

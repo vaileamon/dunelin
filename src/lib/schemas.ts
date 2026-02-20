@@ -18,6 +18,8 @@ export const workspaceConfigSchema = z.object({
   contextFile: z.string().default("CLAUDE.md"),
   template: z.string().nullable().default(null),
   templateUrl: z.string().nullable().default(null),
+  shadow: z.boolean().default(false),
+  updateIgnore: z.array(z.string()).default(["**/repos"]),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
