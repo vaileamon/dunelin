@@ -7,10 +7,12 @@ import { writeEmbeddedTemplate, type TemplateVars } from "../lib/render.ts";
 import {
   listProjectsWithRepos,
   copyFromShadow,
+  getContextFilename,
   CONFIG_FILE,
   DUNELIN_DIR,
   LEGACY_CONFIG_FILE,
 } from "../lib/workspace.ts";
+import { injectDunelinBlock } from "../lib/block.ts";
 import { BASE_TEMPLATE } from "../templates/embedded.ts";
 
 export async function runInit(args: string[]): Promise<void> {
@@ -122,15 +124,20 @@ async function initFromGit(targetDir: string, targetName: string | undefined): P
 
   // Write config
   const now = new Date().toISOString();
-  await writeWorkspaceConfig(targetDir, {
-    version: "0.2.0",
+  const configData = {
+    version: "0.2.1",
     shadow: true,
     template: "custom",
     templateUrl,
     updateIgnore: ["**/repos"],
     createdAt: now,
     updatedAt: now,
-  });
+  };
+  await writeWorkspaceConfig(targetDir, configData);
+
+  // Inject dunelin block into root context file
+  const contextFile = await getContextFilename(targetDir);
+  await injectDunelinBlock(join(targetDir, contextFile), configData);
 
   // Smart repo detection
   await offerRepoCloning(targetDir);
@@ -242,15 +249,19 @@ async function initFromBuiltin(
 
   // Write config to .dunelin/config.json
   const now = new Date().toISOString();
-  await writeWorkspaceConfig(targetDir, {
-    version: "0.2.0",
+  const configData = {
+    version: "0.2.1",
     contextFile: finalContextFile,
     template: "base",
     shadow: false,
     updateIgnore: ["**/repos"],
     createdAt: now,
     updatedAt: now,
-  });
+  };
+  await writeWorkspaceConfig(targetDir, configData);
+
+  // Inject dunelin block into root context file
+  await injectDunelinBlock(join(targetDir, finalContextFile), configData);
 
   s.stop("Workspace scaffolded.");
 

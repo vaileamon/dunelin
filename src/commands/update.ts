@@ -7,8 +7,10 @@ import {
   readWorkspaceConfig,
   hasShadow,
   getShadowPath,
+  getContextFilename,
   copyFromShadow,
 } from "../lib/workspace.ts";
+import { injectDunelinBlock } from "../lib/block.ts";
 
 export async function runUpdate(): Promise<void> {
   const workspacePath = process.cwd();
@@ -22,16 +24,29 @@ export async function runUpdate(): Promise<void> {
     process.exit(1);
   }
 
-  if (!config.shadow || !hasShadow(workspacePath)) {
-    p.log.info("No shadow repo. This workspace was created from a built-in template.");
-    p.log.info("To use `dunelin update`, create your workspace from a git template.");
-    p.outro("Nothing to update.");
-    return;
+  // Shadow workflow: pull + copy
+  if (config.shadow && hasShadow(workspacePath)) {
+    await pullAndApply(workspacePath, config);
   }
 
+  // Always refresh the dunelin block (matches current binary version)
+  const contextFile = await getContextFilename(workspacePath);
+  const injected = await injectDunelinBlock(join(workspacePath, contextFile), config);
+  if (injected) {
+    p.log.success("Dunelin block updated.");
+  }
+
+  p.outro("Done.");
+}
+
+// ─── Shadow pull + apply ────────────────────────────────────────────────────
+
+async function pullAndApply(
+  workspacePath: string,
+  config: { updateIgnore?: string[] }
+): Promise<void> {
   const shadowPath = getShadowPath(workspacePath);
 
-  // Pull latest in shadow
   const s = p.spinner();
   s.start("Pulling latest context...");
 
@@ -48,16 +63,14 @@ export async function runUpdate(): Promise<void> {
 
   s.stop("Pulled latest changes.");
 
-  // Diff shadow vs workspace
   const ignorePatterns = config.updateIgnore ?? ["**/repos"];
   const changes = await diffShadowVsWorkspace(shadowPath, workspacePath, ignorePatterns);
 
   if (changes.length === 0) {
-    p.outro("Workspace is up to date.");
+    p.log.info("Context files are up to date with shadow.");
     return;
   }
 
-  // Show changes
   p.log.info(`Found ${changes.length} change${changes.length > 1 ? "s" : ""}:`);
   for (const change of changes) {
     const icon = change.type === "added" ? "+" : "~";
@@ -74,7 +87,7 @@ export async function runUpdate(): Promise<void> {
   });
 
   if (p.isCancel(applyChoice) || applyChoice === "skip") {
-    p.outro("Update skipped.");
+    p.log.info("File changes skipped.");
     return;
   }
 
@@ -91,21 +104,24 @@ export async function runUpdate(): Promise<void> {
     });
 
     if (p.isCancel(selected) || (selected as string[]).length === 0) {
-      p.outro("Update skipped.");
+      p.log.info("File changes skipped.");
       return;
     }
 
     filesToApply = selected as string[];
   }
 
-  // Apply selected files only
   const s2 = p.spinner();
   s2.start("Applying changes...");
 
-  const { copied } = await copyFromShadow(shadowPath, workspacePath, ignorePatterns, filesToApply);
+  const { copied } = await copyFromShadow(
+    getShadowPath(workspacePath),
+    workspacePath,
+    ignorePatterns,
+    filesToApply
+  );
 
   s2.stop(`Applied ${copied.length} file${copied.length > 1 ? "s" : ""}.`);
-  p.outro("Workspace updated.");
 }
 
 // ─── Diff logic ─────────────────────────────────────────────────────────────
@@ -146,7 +162,6 @@ async function diffShadowVsWorkspace(
             changes.push({ path: relPath, type: "modified" });
           }
         } catch {
-          // File doesn't exist in workspace — it's new
           changes.push({ path: relPath, type: "added" });
         }
       }

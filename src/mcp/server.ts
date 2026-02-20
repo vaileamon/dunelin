@@ -16,7 +16,7 @@ function getWorkspacePath(): string {
 export async function runMcp(): Promise<void> {
   const server = new McpServer({
     name: "dunelin",
-    version: "0.2.0",
+    version: "0.2.1",
   });
 
   // ─── dunelin_get_workspace ──────────────────────────────────────────────
