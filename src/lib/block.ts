@@ -2,7 +2,7 @@ import { readFile, writeFile } from "fs/promises";
 import { existsSync } from "fs";
 import type { WorkspaceConfig } from "./schemas.ts";
 
-const VERSION = "0.2.1";
+const VERSION = "0.2.2";
 const START_MARKER = "<!-- dunelin:start -->";
 const END_MARKER = "<!-- dunelin:end -->";
 
@@ -56,6 +56,13 @@ projects/{name}/dunelin.json      — project metadata (repos, status, tags)
 projects/{name}/changelog/        — decision log
 projects/{name}/repos/            — code repositories (cloned or linked)
 \`\`\`
+
+## Project Metadata (\`dunelin.json\`)
+\`\`\`json
+{ "name": "string", "description": "string", "status": "string", "repos": [{ "name": "string", "url": "git-url" }], "tags": ["string"] }
+\`\`\`
+
+For full documentation: https://github.com/vaileamon/dunelin#readme
 ${END_MARKER}`;
 
   return block;
