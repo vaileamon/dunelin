@@ -2,7 +2,7 @@ import { readFile, writeFile } from "fs/promises";
 import { existsSync } from "fs";
 import type { WorkspaceConfig } from "./schemas.ts";
 
-const VERSION = "0.2.3";
+const VERSION = "0.2.4";
 const START_MARKER = "<!-- dunelin:start -->";
 const END_MARKER = "<!-- dunelin:end -->";
 

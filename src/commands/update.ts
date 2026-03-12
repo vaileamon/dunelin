@@ -11,9 +11,13 @@ import {
   copyFromShadow,
 } from "../lib/workspace.ts";
 import { injectDunelinBlock } from "../lib/block.ts";
+import { enableDebugLog, log } from "../lib/log.ts";
 
 export async function runUpdate(flags: { force?: boolean } = {}): Promise<void> {
+  enableDebugLog();
   const workspacePath = process.cwd();
+
+  log("info", `update start (force=${!!flags.force}, cwd=${workspacePath})`);
 
   p.intro("Dunelin Update");
 
@@ -24,19 +28,24 @@ export async function runUpdate(flags: { force?: boolean } = {}): Promise<void> 
     process.exit(1);
   }
 
+  log("info", `config loaded (shadow=${config.shadow}, ignore=${JSON.stringify(config.updateIgnore)})`);
+
   // Shadow workflow: pull + copy
   if (config.shadow && hasShadow(workspacePath)) {
     await pullAndApply(workspacePath, config, flags.force);
   }
 
   // Always refresh the dunelin block (matches current binary version)
+  log("debug", "injecting dunelin block");
   const contextFile = await getContextFilename(workspacePath);
   const injected = await injectDunelinBlock(join(workspacePath, contextFile), config);
   if (injected) {
     p.log.success("Dunelin block updated.");
   }
 
+  log("info", "update complete, calling outro");
   p.outro("Done.");
+  log("info", "outro done, exiting");
 }
 
 // ─── Shadow pull + apply ────────────────────────────────────────────────────
@@ -51,21 +60,28 @@ async function pullAndApply(
   const s = p.spinner();
   s.start("Pulling latest context...");
 
+  log("debug", `git pull start (shadow=${shadowPath})`);
+
   try {
     const git = simpleGit(shadowPath);
     await git.pull();
   } catch (err) {
     s.stop("Failed to pull.");
-    p.log.error(
-      `Git pull failed: ${err instanceof Error ? err.message : String(err)}`
-    );
+    const msg = err instanceof Error ? err.message : String(err);
+    log("error", `git pull failed: ${msg}`);
+    p.log.error(`Git pull failed: ${msg}`);
     process.exit(1);
   }
 
   s.stop("Pulled latest changes.");
+  log("debug", "git pull done");
 
   const ignorePatterns = config.updateIgnore ?? ["**/repos"];
+  log("debug", `diffing shadow vs workspace (ignore=${JSON.stringify(ignorePatterns)})`);
+
   const changes = await diffShadowVsWorkspace(shadowPath, workspacePath, ignorePatterns);
+
+  log("debug", `diff complete: ${changes.length} changes`);
 
   if (changes.length === 0) {
     p.log.info("Context files are up to date with shadow.");
@@ -76,6 +92,7 @@ async function pullAndApply(
   for (const change of changes) {
     const icon = change.type === "added" ? "+" : "~";
     p.log.message(`  ${icon} ${change.path} (${change.type})`);
+    log("debug", `  ${icon} ${change.path} (${change.type})`);
   }
 
   let filesToApply = changes.map((c) => c.path);
@@ -117,6 +134,8 @@ async function pullAndApply(
   const s2 = p.spinner();
   s2.start("Applying changes...");
 
+  log("debug", `copying ${filesToApply.length} files from shadow`);
+
   const { copied } = await copyFromShadow(
     getShadowPath(workspacePath),
     workspacePath,
@@ -125,6 +144,7 @@ async function pullAndApply(
   );
 
   s2.stop(`Applied ${copied.length} file${copied.length > 1 ? "s" : ""}.`);
+  log("debug", `copy complete: ${copied.length} files applied`);
 }
 
 // ─── Diff logic ─────────────────────────────────────────────────────────────
@@ -150,9 +170,13 @@ async function diffShadowVsWorkspace(
       const fullPath = join(dir, entry.name);
       const relPath = relative(root, fullPath);
 
-      if (isIgnored(relPath)) continue;
+      if (isIgnored(relPath)) {
+        log("debug", `walk: ignored ${relPath}`);
+        continue;
+      }
 
       if (entry.isDirectory()) {
+        log("debug", `walk: entering ${relPath}/`);
         await walk(fullPath, root);
       } else {
         const workspaceFile = join(workspacePath, relPath);

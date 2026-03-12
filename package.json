@@ -1,6 +1,6 @@
 {
   "name": "dunelin",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "CLI tool that scaffolds and manages agentic workspaces",
   "module": "src/index.ts",
   "type": "module",
